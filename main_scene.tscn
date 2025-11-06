@@ -1,0 +1,48 @@
+[gd_scene load_steps=2 format=3 uid="uid://c31iwvsond5eh"]
+
+[ext_resource type="Script" uid="uid://d0ol7fgnfc3pv" path="res://ui.gd" id="1_0f027"]
+
+[node name="MainScene" type="Control" node_paths=PackedStringArray("texture_rect")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_0f027")
+texture_rect = NodePath("TextureRect")
+
+[node name="TextureRect" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Button" type="Button" parent="."]
+layout_mode = 0
+offset_left = 5.0
+offset_top = 6.0
+offset_right = 234.0
+offset_bottom = 37.0
+text = "Do Mandelbrot"
+
+[node name="HSlider" type="HSlider" parent="."]
+visible = false
+layout_mode = 0
+offset_left = 6.0
+offset_top = 76.0
+offset_right = 232.0
+offset_bottom = 92.0
+
+[node name="Label" type="Label" parent="."]
+visible = false
+layout_mode = 0
+offset_left = 5.0
+offset_top = 45.0
+offset_right = 239.0
+offset_bottom = 68.0
+text = "CPU Thread Count: 1 (Max: 16)"
+
+[connection signal="button_down" from="Button" to="." method="do_mandelbrot"]
