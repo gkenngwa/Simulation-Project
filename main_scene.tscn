@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://d0ol7fgnfc3pv" path="res://ui.gd" id="1_0f027"]
 
-[node name="MainScene" type="Control" node_paths=PackedStringArray("texture_rect")]
+[node name="MainScene" type="Control" node_paths=PackedStringArray("texture_rect", "max_cpu_cores_text", "max_gpu_cores_text", "h_slider", "h_slider2", "cpu_on_text", "zoom_text", "results_text")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -11,6 +11,13 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_0f027")
 texture_rect = NodePath("TextureRect")
+max_cpu_cores_text = NodePath("HSlider/Label")
+max_gpu_cores_text = NodePath("HSlider2/Label")
+h_slider = NodePath("HSlider")
+h_slider2 = NodePath("HSlider2")
+cpu_on_text = NodePath("Label3")
+zoom_text = NodePath("Label")
+results_text = NodePath("Label2")
 
 [node name="TextureRect" type="TextureRect" parent="."]
 layout_mode = 1
@@ -20,29 +27,110 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="Button" type="Button" parent="."]
+[node name="HSlider2" type="HSlider" parent="."]
 layout_mode = 0
-offset_left = 5.0
-offset_top = 6.0
-offset_right = 234.0
-offset_bottom = 37.0
-text = "Do Mandelbrot"
+offset_left = 9.0
+offset_top = 198.0
+offset_right = 457.0
+offset_bottom = 214.0
+focus_mode = 0
+min_value = 1.0
+max_value = 16.0
+value = 1.0
+
+[node name="Label" type="Label" parent="HSlider2"]
+layout_mode = 0
+offset_left = -30.0
+offset_top = -32.0
+offset_right = 364.0
+offset_bottom = -9.0
+text = "GPU Workitems: 1 (Max: 1024)"
+horizontal_alignment = 1
 
 [node name="HSlider" type="HSlider" parent="."]
-visible = false
 layout_mode = 0
-offset_left = 6.0
-offset_top = 76.0
-offset_right = 232.0
-offset_bottom = 92.0
+offset_left = 10.0
+offset_top = 138.0
+offset_right = 449.0
+offset_bottom = 154.0
+focus_mode = 0
+min_value = 1.0
+max_value = 16.0
+value = 1.0
+
+[node name="Label" type="Label" parent="HSlider"]
+layout_mode = 0
+offset_left = -35.0
+offset_top = -32.0
+offset_right = 360.0
+offset_bottom = -9.0
+text = "CPU Thread Count: 1 (Max: 16)"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Button" type="Button" parent="."]
+layout_mode = 0
+offset_left = 23.0
+offset_top = 9.0
+offset_right = 189.0
+offset_bottom = 45.0
+focus_mode = 0
+text = "Do Mandelbrot"
+
+[node name="CheckButton" type="CheckButton" parent="."]
+layout_mode = 0
+offset_left = 206.0
+offset_top = 39.0
+offset_right = 250.0
+offset_bottom = 63.0
+scale = Vector2(2, 2)
+focus_mode = 0
+button_pressed = true
+
+[node name="Label3" type="Label" parent="."]
+layout_mode = 0
+offset_left = 233.0
+offset_top = 17.0
+offset_right = 273.0
+offset_bottom = 40.0
+text = "CPU"
+
+[node name="Button3" type="Button" parent="."]
+layout_mode = 0
+offset_left = 163.0
+offset_top = 54.0
+offset_right = 195.0
+offset_bottom = 86.0
+focus_mode = 0
+text = "+"
+
+[node name="Button2" type="Button" parent="."]
+layout_mode = 0
+offset_left = 125.0
+offset_top = 54.0
+offset_right = 157.0
+offset_bottom = 86.0
+focus_mode = 0
+text = "-"
 
 [node name="Label" type="Label" parent="."]
-visible = false
 layout_mode = 0
-offset_left = 5.0
-offset_top = 45.0
-offset_right = 239.0
-offset_bottom = 68.0
-text = "CPU Thread Count: 1 (Max: 16)"
+offset_left = 23.0
+offset_top = 57.0
+offset_right = 117.0
+offset_bottom = 80.0
+text = "Zoom: 1x"
 
+[node name="Label2" type="Label" parent="."]
+layout_mode = 0
+offset_left = 11.0
+offset_top = 236.0
+offset_right = 245.0
+offset_bottom = 259.0
+
+[connection signal="value_changed" from="HSlider2" to="." method="gpu_slider_changed"]
+[connection signal="value_changed" from="HSlider" to="." method="cpu_slider_changed"]
 [connection signal="button_down" from="Button" to="." method="do_mandelbrot"]
+[connection signal="toggled" from="CheckButton" to="." method="_on_check_button_toggled"]
+[connection signal="pressed" from="Button3" to="." method="zoom_in"]
+[connection signal="pressed" from="Button2" to="." method="zoom_out"]
