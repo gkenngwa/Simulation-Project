@@ -1,8 +1,8 @@
-[gd_scene load_steps=2 format=3 uid="uid://c31iwvsond5eh"]
+[gd_scene format=3 uid="uid://c31iwvsond5eh"]
 
 [ext_resource type="Script" uid="uid://d0ol7fgnfc3pv" path="res://ui.gd" id="1_0f027"]
 
-[node name="MainScene" type="Control" node_paths=PackedStringArray("texture_rect", "max_cpu_cores_text", "max_gpu_cores_text", "h_slider", "h_slider2", "cpu_on_text", "zoom_text", "results_text")]
+[node name="MainScene" type="Control" unique_id=2140012905 node_paths=PackedStringArray("texture_rect", "max_cpu_cores_text", "max_gpu_cores_text", "h_slider", "h_slider2", "cpu_on_text", "zoom_text", "results_text", "sim_selector")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -18,8 +18,9 @@ h_slider2 = NodePath("HSlider2")
 cpu_on_text = NodePath("Label3")
 zoom_text = NodePath("Label")
 results_text = NodePath("Label2")
+sim_selector = NodePath("OptionButton")
 
-[node name="TextureRect" type="TextureRect" parent="."]
+[node name="TextureRect" type="TextureRect" parent="." unique_id=1990070928]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -27,7 +28,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="HSlider2" type="HSlider" parent="."]
+[node name="HSlider2" type="HSlider" parent="." unique_id=1431069051]
 layout_mode = 0
 offset_left = 9.0
 offset_top = 198.0
@@ -38,7 +39,7 @@ min_value = 1.0
 max_value = 16.0
 value = 1.0
 
-[node name="Label" type="Label" parent="HSlider2"]
+[node name="Label" type="Label" parent="HSlider2" unique_id=946617376]
 layout_mode = 0
 offset_left = -30.0
 offset_top = -32.0
@@ -47,7 +48,7 @@ offset_bottom = -9.0
 text = "GPU Workitems: 1 (Max: 1024)"
 horizontal_alignment = 1
 
-[node name="HSlider" type="HSlider" parent="."]
+[node name="HSlider" type="HSlider" parent="." unique_id=345641492]
 layout_mode = 0
 offset_left = 10.0
 offset_top = 138.0
@@ -58,7 +59,7 @@ min_value = 1.0
 max_value = 16.0
 value = 1.0
 
-[node name="Label" type="Label" parent="HSlider"]
+[node name="Label" type="Label" parent="HSlider" unique_id=1643625505]
 layout_mode = 0
 offset_left = -35.0
 offset_top = -32.0
@@ -68,16 +69,16 @@ text = "CPU Thread Count: 1 (Max: 16)"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Button" type="Button" parent="."]
+[node name="Button" type="Button" parent="." unique_id=683786246]
 layout_mode = 0
 offset_left = 23.0
 offset_top = 9.0
 offset_right = 189.0
 offset_bottom = 45.0
 focus_mode = 0
-text = "Do Mandelbrot"
+text = "Do Simulation"
 
-[node name="CheckButton" type="CheckButton" parent="."]
+[node name="CheckButton" type="CheckButton" parent="." unique_id=1170439550]
 layout_mode = 0
 offset_left = 206.0
 offset_top = 39.0
@@ -87,7 +88,7 @@ scale = Vector2(2, 2)
 focus_mode = 0
 button_pressed = true
 
-[node name="Label3" type="Label" parent="."]
+[node name="Label3" type="Label" parent="." unique_id=625485829]
 layout_mode = 0
 offset_left = 233.0
 offset_top = 17.0
@@ -95,7 +96,7 @@ offset_right = 273.0
 offset_bottom = 40.0
 text = "CPU"
 
-[node name="Button3" type="Button" parent="."]
+[node name="Button3" type="Button" parent="." unique_id=1608375444]
 layout_mode = 0
 offset_left = 163.0
 offset_top = 54.0
@@ -104,7 +105,7 @@ offset_bottom = 86.0
 focus_mode = 0
 text = "+"
 
-[node name="Button2" type="Button" parent="."]
+[node name="Button2" type="Button" parent="." unique_id=903006806]
 layout_mode = 0
 offset_left = 125.0
 offset_top = 54.0
@@ -113,7 +114,7 @@ offset_bottom = 86.0
 focus_mode = 0
 text = "-"
 
-[node name="Label" type="Label" parent="."]
+[node name="Label" type="Label" parent="." unique_id=489403511]
 layout_mode = 0
 offset_left = 23.0
 offset_top = 57.0
@@ -121,16 +122,24 @@ offset_right = 117.0
 offset_bottom = 80.0
 text = "Zoom: 1x"
 
-[node name="Label2" type="Label" parent="."]
+[node name="Label2" type="Label" parent="." unique_id=1784393068]
 layout_mode = 0
 offset_left = 11.0
 offset_top = 236.0
 offset_right = 245.0
 offset_bottom = 259.0
 
+[node name="OptionButton" type="OptionButton" parent="." unique_id=345483858]
+layout_mode = 0
+offset_left = 297.0
+offset_top = 11.0
+offset_right = 453.0
+offset_bottom = 85.0
+
 [connection signal="value_changed" from="HSlider2" to="." method="gpu_slider_changed"]
 [connection signal="value_changed" from="HSlider" to="." method="cpu_slider_changed"]
-[connection signal="button_down" from="Button" to="." method="do_mandelbrot"]
+[connection signal="button_down" from="Button" to="." method="start_render"]
 [connection signal="toggled" from="CheckButton" to="." method="_on_check_button_toggled"]
 [connection signal="pressed" from="Button3" to="." method="zoom_in"]
 [connection signal="pressed" from="Button2" to="." method="zoom_out"]
+[connection signal="item_selected" from="OptionButton" to="." method="_on_sim_selector_item_selected"]
