@@ -58,10 +58,10 @@ func _process(_delta: float):
 			var cells = sim_manager.GetLiveCellCount()
 			if mode == 0:
 				var threads = sim_manager.GetLastThreadCount()
-				results_text.text = "%d thread(s): %d generations, %d live cells" % [threads, gens, cells]
+				results_text.text = "%d thread(s): %d generations, %d live cells in 1s" % [threads, gens, cells]
 			else:
 				var groups = sim_manager.GetLastWorkGroupCount()
-				results_text.text = "%d work group(s): %d generations, %d live cells" % [groups, gens, cells]
+				results_text.text = "%d work group(s): %d generations, %d live cells in 1s" % [groups, gens, cells]
 		else:
 			var time_ms = sim_manager.GetTimeMs()
 			if time_ms != 0:
