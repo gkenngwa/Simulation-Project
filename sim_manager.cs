@@ -5,11 +5,15 @@ using System.Collections.Generic;
 [GlobalClass]
 public partial class sim_manager : RefCounted
 {
-	private static Dictionary<string, Func<sim>> registeredsims = new Dictionary<string, Func<sim>>();
-	private static sim currentsim;
-	private static string currentsimName;
+	private static Dictionary<string, Func<sim>> registeredSims = new Dictionary<string, Func<sim>>();
+	private static sim currentSim;
+	private static string currentSimName;
+	
+	private static gpu_handler gpuHandler;
+	private static cpu_handler cpuHandler;
 	
 	private static bool initialized = false;
+	private static bool gpuSetupForCurrentSim = false;
 	
 	private static void EnsureInitialized()
 	{
@@ -18,51 +22,81 @@ public partial class sim_manager : RefCounted
 			Register("Mandelbrot", () => new sim_mandelbrot());
 			Register("Game of Life", () => new sim_game_of_life());
 			Register("Monte Carlo", () => new sim_monte_carlo());
+			
+			gpuHandler = new gpu_handler();
+			gpuHandler.Initialize();
+			cpuHandler = new cpu_handler();
+			
 			initialized = true;
 		}
 	}
 	
 	public static void Register(string name, Func<sim> factory)
 	{
-		registeredsims[name] = factory;
+		registeredSims[name] = factory;
 	}
 	
-	public static string[] GetAvailablesims()
+	public static string[] GetAvailableSims()
 	{
-		var names = new string[registeredsims.Count];
-		registeredsims.Keys.CopyTo(names, 0);
+		var names = new string[registeredSims.Count];
+		registeredSims.Keys.CopyTo(names, 0);
 		return names;
 	}
 	
 	public static void Setsim(string name)
 	{
 		EnsureInitialized();
-		if (registeredsims.TryGetValue(name, out var factory))
+		if (registeredSims.TryGetValue(name, out var factory))
 		{
-			currentsim = factory();
-			currentsimName = name;
+			currentSim = factory();
+			currentSimName = name;
+			gpuSetupForCurrentSim = false;
 		}
 		else
 		{
-			GD.PrintErr($"sim '{name}' not found");
+			GD.PrintErr($"Sim '{name}' not found");
 		}
 	}
 	
-	public static sim GetCurrentsim() => currentsim;
-	public static string GetCurrentsimName() => currentsimName;
+	public static sim GetCurrentSim() => currentSim;
+	public static string GetCurrentSimName() => currentSimName;
 	
-	public static bool IsFinished() => currentsim?.IsFinished() ?? false;
-	public static bool IsRendering() => currentsim?.IsRendering() ?? false;
-	public static float GetTimeMs() => currentsim?.GetTimeMs() ?? 0f;
-	public static int GetLastThreadCount() => currentsim?.GetLastThreadCount() ?? 0;
-	public static int GetLastWorkGroupCount() => currentsim?.GetLastWorkGroupCount() ?? 0;
-	public static ComputeMode GetLastComputeMode() => currentsim?.GetLastComputeMode() ?? ComputeMode.CPU;
-	public static byte[] GetData() => currentsim?.GetData();
-	public static int GetMaxWorkGroupSize() => currentsim?.GetMaxWorkGroupSize() ?? 1;
+	public static bool IsFinished() => currentSim?.IsFinished() ?? false;
+	public static bool IsRendering() => currentSim?.IsRendering() ?? false;
+	public static float GetTimeMs() => currentSim?.GetTimeMs() ?? 0f;
+	public static int GetLastThreadCount() => currentSim?.GetLastThreadCount() ?? 0;
+	public static int GetLastWorkGroupCount() => currentSim?.GetLastWorkGroupCount() ?? 0;
+	public static ComputeMode GetLastComputeMode() => currentSim?.GetLastComputeMode() ?? ComputeMode.CPU;
+	public static byte[] GetData() => currentSim?.GetData();
+	public static int GetMaxWorkGroupSize() => gpuHandler?.GetMaxWorkGroupSize() ?? 1;
 	
 	public static void StartRender(int width, int height, int threadCount, ComputeMode mode, int workGroupCount)
 	{
-		currentsim?.StartRender(width, height, threadCount, mode, workGroupCount);
+		EnsureInitialized();
+		if (currentSim == null || currentSim.IsRendering()) return;
+		
+		currentSim.Setup(width, height, threadCount, workGroupCount, mode);
+		
+		if (mode == ComputeMode.CPU)
+		{
+			currentSim.RunCPUCompute(cpuHandler, () => currentSim.FinishRender());
+		}
+		else
+		{
+			SetupGPUForSim(width, height);
+			currentSim.RunGPUCompute(gpuHandler, () => currentSim.FinishRender());
+		}
+	}
+	
+	private static void SetupGPUForSim(int width, int height)
+	{
+		if (!gpuSetupForCurrentSim)
+		{
+			gpuHandler.BuildKernel(currentSim.GetKernelSource(), currentSim.GetKernelName());
+			gpuHandler.CreateBuffer(width * height * 3);
+			currentSim.OnGPUSetup(gpuHandler);
+			gpuSetupForCurrentSim = true;
+		}
 	}
 	
 	public static void SetZoom(float zoom)
@@ -72,17 +106,17 @@ public partial class sim_manager : RefCounted
 	
 	public static int GetGenerationsCompleted()
 	{
-		return currentsim.GetGenerationsCompleted();
+		return currentSim?.GetGenerationsCompleted() ?? 0;
 	}
 	
 	public static int GetLiveCellCount()
 	{
-		return currentsim.GetLiveCellCount();
+		return currentSim?.GetLiveCellCount() ?? 0;
 	}
 	
 	public static void SetParameter(string name, object value)
 	{
-		if (currentsim is IParameterized paramSim)
+		if (currentSim is IParameterized paramSim)
 		{
 			paramSim.SetParameter(name, value);
 		}
@@ -90,7 +124,7 @@ public partial class sim_manager : RefCounted
 	
 	public static object GetParameter(string name)
 	{
-		if (currentsim is IParameterized paramSim)
+		if (currentSim is IParameterized paramSim)
 		{
 			return paramSim.GetParameter(name);
 		}

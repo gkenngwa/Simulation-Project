@@ -1,7 +1,5 @@
 using Godot;
 using System;
-using System.Threading;
-using Silk.NET.OpenCL;
 
 [GlobalClass]
 public partial class sim_mandelbrot : sim, IParameterized
@@ -18,15 +16,9 @@ public partial class sim_mandelbrot : sim, IParameterized
 	{
 		switch (name.ToLower())
 		{
-			case "zoom":
-				zoomLevel = Convert.ToSingle(value);
-				break;
-			case "centerx":
-				centerX = Convert.ToSingle(value);
-				break;
-			case "centery":
-				centerY = Convert.ToSingle(value);
-				break;
+			case "zoom": zoomLevel = Convert.ToSingle(value); break;
+			case "centerx": centerX = Convert.ToSingle(value); break;
+			case "centery": centerY = Convert.ToSingle(value); break;
 		}
 	}
 	
@@ -43,33 +35,9 @@ public partial class sim_mandelbrot : sim, IParameterized
 	
 	public string[] GetParameterNames() => new[] { "zoom", "centerX", "centerY" };
 	
-	protected override void RenderCPU()
-	{
-		for (int t = 0; t < threadCount; t++)
-		{
-			int index = t;
-			Thread thread = new Thread(() => RenderRows(index, threadCount));
-			thread.IsBackground = false;
-			thread.Start();
-		}
-	}
-	
-	private void RenderRows(int threadIndex, int totalThreads)
-	{
-		for (int py = threadIndex; py < height; py += totalThreads)
-		{
-			for (int px = 0; px < width; px++)
-			{
-				ProcessPixel(px, py);
-			}
-		}
-		ThreadCompleted();
-	}
-	
-	private void ProcessPixel(int px, int py)
+	public override void ComputePixel(int px, int py)
 	{
 		float scale = width * zoomLevel;
-		
 		float x = centerX + (px - width * 0.5f) / scale;
 		float y = centerY + (py - height * 0.5f) / scale;
 		
@@ -108,25 +76,17 @@ public partial class sim_mandelbrot : sim, IParameterized
 		);
 	}
 	
-	protected override string GetKernelName() => "mandelbrot";
+	public override string GetKernelName() => "mandelbrot";
 	
-	protected override void SetKernelArgs()
+	public override GpuArg[] GetKernelArgs() => new[]
 	{
-		unsafe
-		{
-			int w = width;
-			int h = height;
-			float z = zoomLevel;
-			nint buf = gpuBuffer;
-			
-			cl.SetKernelArg(gpuKernel, 0, (nuint)sizeof(nint), &buf);
-			cl.SetKernelArg(gpuKernel, 1, (nuint)sizeof(int), &w);
-			cl.SetKernelArg(gpuKernel, 2, (nuint)sizeof(int), &h);
-			cl.SetKernelArg(gpuKernel, 3, (nuint)sizeof(float), &z);
-		}
-	}
+		GpuArg.Buffer,
+		GpuArg.Int(width),
+		GpuArg.Int(height),
+		GpuArg.Float(zoomLevel)
+	};
 	
-	protected override string GetKernelSource() => @"
+	public override string GetKernelSource() => @"
 __kernel void mandelbrot(__global uchar* output, int width, int height, float zoom) {
 	int index = get_global_id(0);
 	if (index >= width * height) return;

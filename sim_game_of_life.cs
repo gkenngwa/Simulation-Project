@@ -1,7 +1,5 @@
 using Godot;
 using System;
-using System.Threading;
-using Silk.NET.OpenCL;
 
 [GlobalClass]
 public partial class sim_game_of_life : sim, IParameterized
@@ -10,9 +8,6 @@ public partial class sim_game_of_life : sim, IParameterized
 	private new int gridSize = 4096;
 	private int generationsCompleted = 0;
 	private int liveCellCount = 0;
-	
-	private nint gpuSimKernel, gpuRenderKernel;
-	private bool gpuKernelsInitialized = false;
 	
 	private int minX, maxX, minY, maxY;
 	
@@ -40,18 +35,32 @@ public partial class sim_game_of_life : sim, IParameterized
 					grid[(cy + dy) * gridSize + (cx + dx)] = 1;
 	}
 	
-	protected override void RenderCPU()
+	public override void OnGPUSetup(gpu_handler gpu)
+	{
+		gpu.AddKernel("gol_render");
+		gpu.CreateGridBuffers(gridSize * gridSize);
+	}
+	
+	public override void RunCPUCompute(cpu_handler cpu, Action onComplete)
 	{
 		InitializeGrids(gridSize);
 		InitSeed(gridA);
 		generationsCompleted = 0;
 		
-		StartTimedSimulation(SimulateStripe);
+		cpu.RunTimedSimulation(threadCount, SimulateStripe, () =>
+		{
+			liveCellCount = 0;
+			for (int i = 0; i < gridA.Length; i++)
+				liveCellCount += gridA[i];
+			
+			RenderGrid();
+			onComplete();
+		});
 	}
 	
-	private void SimulateStripe(int threadIndex, int totalThreads)
+	private void SimulateStripe(int threadIndex, int totalThreads, cpu_handler cpu)
 	{
-		while (!timeUp)
+		while (true)
 		{
 			int workMinY = Math.Max(1, minY - 1);
 			int workMaxY = Math.Min(gridSize - 2, maxY + 1);
@@ -89,24 +98,24 @@ public partial class sim_game_of_life : sim, IParameterized
 				}
 			}
 			
-			barrier.SignalAndWait();
+			cpu.SignalAndWait();
 			
 			if (threadIndex == 0)
 			{
 				minX = gridSize; maxX = 0; minY = gridSize; maxY = 0;
 			}
 			
-			barrier.SignalAndWait();
+			cpu.SignalAndWait();
 			
-			lock (barrier)
+			cpu.LockAndUpdate(() =>
 			{
 				if (localMinX < minX) minX = localMinX;
 				if (localMaxX > maxX) maxX = localMaxX;
 				if (localMinY < minY) minY = localMinY;
 				if (localMaxY > maxY) maxY = localMaxY;
-			}
+			});
 			
-			barrier.SignalAndWait();
+			cpu.SignalAndWait();
 			
 			if (threadIndex == 0)
 			{
@@ -114,20 +123,9 @@ public partial class sim_game_of_life : sim, IParameterized
 				generationsCompleted++;
 			}
 			
-			barrier.SignalAndWait();
-		}
-		
-		if (threadIndex == 0)
-		{
-			liveCellCount = 0;
-			for (int i = 0; i < gridA.Length; i++)
-				liveCellCount += gridA[i];
+			cpu.SignalAndWait();
 			
-			RenderGrid();
-		}
-		else
-		{
-			ThreadCompleted();
+			if (cpu.TimeUp) break;
 		}
 	}
 	
@@ -151,94 +149,41 @@ public partial class sim_game_of_life : sim, IParameterized
 				SetPixelColor(px, py, (byte)(val * 255), (byte)(val * 255), (byte)(val * 255));
 			}
 		}
-		
-		FinishRender();
 	}
 	
-	protected override void RenderGPU()
+	public override void RunGPUCompute(gpu_handler gpu, Action onComplete)
 	{
-		if (!gpuKernelsInitialized)
-		{
-			InitializeGPU();
-			InitializeGPUGrids(gridSize);
-			
-			unsafe
-			{
-				int err;
-				nint prog = cl.CreateProgramWithSource(gpuContext, 1, new[] { GetKernelSource() }, null, &err);
-				nint dev = gpuDevice;
-				cl.BuildProgram(prog, 1, &dev, "", null, null);
-				
-				fixed (byte* s = System.Text.Encoding.ASCII.GetBytes("gol_step\0"))
-				fixed (byte* r = System.Text.Encoding.ASCII.GetBytes("gol_render\0"))
-				{
-					gpuSimKernel = cl.CreateKernel(prog, s, &err);
-					gpuRenderKernel = cl.CreateKernel(prog, r, &err);
-				}
-			}
-			gpuKernelsInitialized = true;
-		}
+		byte[] grid = new byte[gridSize * gridSize];
+		InitSeed(grid);
+		gpu.WriteGridA(grid);
 		
-		unsafe
+		generationsCompleted = gpu.RunTimedKernelLoop("gol_step", gridSize * gridSize, workGroupCount, 1000,
+			() => new[] { GpuArg.GridA, GpuArg.GridB, GpuArg.Int(gridSize) });
+		
+		byte[] final = new byte[gridSize * gridSize];
+		gpu.ReadGridA(final);
+		
+		liveCellCount = 0;
+		for (int i = 0; i < final.Length; i++)
+			liveCellCount += final[i];
+		
+		gpu.RunKernel("gol_render", width * height, workGroupCount, new[]
 		{
-			byte[] grid = new byte[gridSize * gridSize];
-			InitSeed(grid);
-			
-			fixed (byte* p = grid)
-				cl.EnqueueWriteBuffer(gpuQueue, gpuGridA, true, 0, (nuint)(gridSize * gridSize), p, 0, null, null);
-			
-			int gs = gridSize;
-			nuint globalSize = (nuint)(gridSize * gridSize);
-			nuint localSize = (nuint)workGroupCount;
-			nint read = gpuGridA, write = gpuGridB;
-			
-			generationsCompleted = 0;
-			var start = DateTime.Now;
-			
-			while ((DateTime.Now - start).TotalMilliseconds < 1000)
-			{
-				cl.SetKernelArg(gpuSimKernel, 0, (nuint)sizeof(nint), &read);
-				cl.SetKernelArg(gpuSimKernel, 1, (nuint)sizeof(nint), &write);
-				cl.SetKernelArg(gpuSimKernel, 2, (nuint)sizeof(int), &gs);
-				cl.EnqueueNdrangeKernel(gpuQueue, gpuSimKernel, 1, null, &globalSize, &localSize, 0, null, null);
-				cl.Finish(gpuQueue);
-				(read, write) = (write, read);
-				generationsCompleted++;
-			}
-			
-			byte[] final = new byte[gridSize * gridSize];
-			fixed (byte* p = final)
-				cl.EnqueueReadBuffer(gpuQueue, read, true, 0, (nuint)(gridSize * gridSize), p, 0, null, null);
-			
-			liveCellCount = 0;
-			for (int i = 0; i < final.Length; i++)
-				liveCellCount += final[i];
-			
-			int w = width, h = height;
-			float z = zoomLevel;
-			nint buf = gpuBuffer;
-			cl.SetKernelArg(gpuRenderKernel, 0, (nuint)sizeof(nint), &read);
-			cl.SetKernelArg(gpuRenderKernel, 1, (nuint)sizeof(nint), &buf);
-			cl.SetKernelArg(gpuRenderKernel, 2, (nuint)sizeof(int), &gs);
-			cl.SetKernelArg(gpuRenderKernel, 3, (nuint)sizeof(int), &w);
-			cl.SetKernelArg(gpuRenderKernel, 4, (nuint)sizeof(int), &h);
-			cl.SetKernelArg(gpuRenderKernel, 5, (nuint)sizeof(float), &z);
-			
-			nuint renderSize = (nuint)(width * height);
-			cl.EnqueueNdrangeKernel(gpuQueue, gpuRenderKernel, 1, null, &renderSize, &localSize, 0, null, null);
-			cl.Finish(gpuQueue);
-			
-			fixed (byte* p = data)
-				cl.EnqueueReadBuffer(gpuQueue, gpuBuffer, true, 0, (nuint)(width * height * 3), p, 0, null, null);
-			
-			FinishRender();
-		}
+			GpuArg.GridA,
+			GpuArg.Buffer,
+			GpuArg.Int(gridSize),
+			GpuArg.Int(width),
+			GpuArg.Int(height),
+			GpuArg.Float(zoomLevel)
+		});
+		
+		gpu.ReadOutputBuffer(data);
+		onComplete();
 	}
 	
-	protected override string GetKernelName() => "gol_step";
-	protected override void SetKernelArgs() { }
+	public override string GetKernelName() => "gol_step";
 	
-	protected override string GetKernelSource() => @"
+	public override string GetKernelSource() => @"
 __kernel void gol_step(__global uchar* in, __global uchar* out, int gs) {
 	int i = get_global_id(0);
 	if (i >= gs * gs) return;

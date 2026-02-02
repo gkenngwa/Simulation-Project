@@ -1,13 +1,14 @@
 using Godot;
 using System;
-using System.Threading;
-using Silk.NET.OpenCL;
 
 [GlobalClass]
 public partial class sim_monte_carlo : sim, IParameterized
 {
 	private int samplesPerRay = 32;
 	private float zoom = 1.0f;
+	
+	private uint threadSeed;
+	private float threadTint;
 
 	public override string GetName() => "Monte Carlo";
 
@@ -20,65 +21,68 @@ public partial class sim_monte_carlo : sim, IParameterized
 		}
 	}
 
-	public object GetParameter(string name) => name.ToLower() switch { "samplesperray" => samplesPerRay, "zoom" => zoom, _ => null };
+	public object GetParameter(string name) => name.ToLower() switch
+	{
+		"samplesperray" => samplesPerRay,
+		"zoom" => zoom,
+		_ => null
+	};
+	
 	public string[] GetParameterNames() => new[] { "samplesPerRay", "zoom" };
 	
-	protected override void RenderCPU()
+	public override void RunCPUCompute(cpu_handler cpu, Action onComplete)
 	{
-		Thread[] threads = new Thread[threadCount];
-		for (int i = 0; i < threadCount; i++)
+		cpu.RunParallel(threadCount, (idx, total) =>
 		{
-			int idx = i;
-			threads[i] = new Thread(() =>
+			uint seed = (uint)(idx * 12345 + 1);
+			float tint = idx / (float)total;
+			
+			for (int py = idx; py < height; py += total)
 			{
-				uint seed = (uint)(idx * 12345 + 1);
-				float tint = idx / (float)threadCount;
-				for (int py = idx; py < height; py += threadCount)
+				for (int px = 0; px < width; px++)
 				{
-					for (int px = 0; px < width; px++)
-					{
-						float sum = 0;
-						for (int j = 0; j < samplesPerRay; j++)
-						{
-							float rx = px + Rf(ref seed) - 0.5f;
-							float ry = py + Rf(ref seed) - 0.5f;
-							sum += ((int)rx ^ (int)ry) & 255;
-						}
-						byte c = (byte)(sum / samplesPerRay);
-						byte r = (byte)(c * (0.5f + 0.5f * tint));
-						byte g = (byte)(c * (1f - 0.5f * tint));
-						byte b = (byte)(c * 0.8f);
-						SetPixelColor(px, py, r, g, b);
-					}
+					ComputePixelWithSeed(px, py, ref seed, tint);
 				}
-				ThreadCompleted();
-			});
+			}
+		}, onComplete);
+	}
+	
+	public override void ComputePixel(int px, int py)
+	{
+		ComputePixelWithSeed(px, py, ref threadSeed, threadTint);
+	}
+	
+	private void ComputePixelWithSeed(int px, int py, ref uint seed, float tint)
+	{
+		float sum = 0;
+		for (int j = 0; j < samplesPerRay; j++)
+		{
+			float rx = px + Rf(ref seed) - 0.5f;
+			float ry = py + Rf(ref seed) - 0.5f;
+			sum += ((int)rx ^ (int)ry) & 255;
 		}
-		for (int i = 0; i < threadCount; i++)
-			threads[i].Start();
+		byte c = (byte)(sum / samplesPerRay);
+		byte r = (byte)(c * (0.5f + 0.5f * tint));
+		byte g = (byte)(c * (1f - 0.5f * tint));
+		byte b = (byte)(c * 0.8f);
+		SetPixelColor(px, py, r, g, b);
 	}
 
 	private static uint Rng(uint s) { s ^= s << 13; s ^= s >> 17; s ^= s << 5; return s; }
 	private static float Rf(ref uint s) { s = Rng(s); return (s & 0xFFFFFF) / (float)0xFFFFFF; }
 
-
-	protected override string GetKernelName() => "monte_carlo_volume";
-	protected override void SetKernelArgs()
+	public override string GetKernelName() => "monte_carlo_volume";
+	
+	public override GpuArg[] GetKernelArgs() => new[]
 	{
-		unsafe
-		{
-			int w = width, h = height, spr = samplesPerRay;
-			float z = zoom;
-			nint buf = gpuBuffer;
-			cl.SetKernelArg(gpuKernel, 0, (nuint)sizeof(nint), &buf);
-			cl.SetKernelArg(gpuKernel, 1, (nuint)sizeof(int), &w);
-			cl.SetKernelArg(gpuKernel, 2, (nuint)sizeof(int), &h);
-			cl.SetKernelArg(gpuKernel, 3, (nuint)sizeof(int), &spr);
-			cl.SetKernelArg(gpuKernel, 4, (nuint)sizeof(float), &z);
-		}
-	}
+		GpuArg.Buffer,
+		GpuArg.Int(width),
+		GpuArg.Int(height),
+		GpuArg.Int(samplesPerRay),
+		GpuArg.Float(zoom)
+	};
 
-	protected override string GetKernelSource() => @"
+	public override string GetKernelSource() => @"
 uint rng(uint s) { s^=s<<13; s^=s>>17; s^=s<<5; return s; }
 float rf(uint* s) { *s=rng(*s); return (*s&0xFFFFFF)/(float)0xFFFFFF; }
 __kernel void monte_carlo_volume(__global uchar* out, int w, int h, int spr, float zoom) {
@@ -98,5 +102,4 @@ __kernel void monte_carlo_volume(__global uchar* out, int w, int h, int spr, flo
 	int oi=i*3;
 	out[oi]=(uchar)(sumR/spr); out[oi+1]=(uchar)(sumG/spr); out[oi+2]=(uchar)(sumB/spr);
 }";
-
 }
